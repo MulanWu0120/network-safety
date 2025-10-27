@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>古典密码学与 DES 实验 | Vue 单页</title>
+  <script src="https://unpkg.com/vue@3"></script>
+  <style>
+    :root { --bg:#0b1220; --card:#111a2b; --muted:#a8b3c7; --text:#e6edf6; --accent:#4f8cff; }
+    *{box-sizing:border-box} body{margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:1100px; margin:40px auto; padding:0 16px}
+    .title{font-size:26px; font-weight:700; letter-spacing:.3px}
+    .subtitle{opacity:.85; margin-top:6px}
+    .card{background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:18px; box-shadow:0 6px 24px rgba(0,0,0,.25)}
+    .grid{display:grid; gap:14px}
+    .grid.cols{grid-template-columns: 1.2fr .8fr}
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    label{font-weight:600; font-size:13px; color:var(--muted)}
+    input[type="text"], input[type="number"], textarea, select {
+      width:100%; background:#0d1526; color:var(--text); border:1px solid rgba(255,255,255,.08);
+      border-radius:12px; padding:10px 12px; outline:none
+    }
+    textarea{min-height:120px; resize:vertical}
+    .btn{appearance:none; border:none; background:var(--accent); color:white; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700}
+    .btn.secondary{background:#18243c}
+    .btn:disabled{opacity:.6; cursor:not-allowed}
+    .tabbar{display:flex; gap:8px; flex-wrap:wrap}
+    .tab{padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12); cursor:pointer; user-select:none}
+    .tab.active{background:var(--accent); border-color:transparent}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .muted{color:var(--muted)}
+    .hint{font-size:12px; color:#a8b3c7; opacity:.9}
+    .footer{margin-top:8px; font-size:12px; color:#9ab}
+    .kvs{display:grid; grid-template-columns: 140px 1fr; gap:8px; align-items:center}
+    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:#1a2744; color:#cfe0ff; font-size:12px}
+  </style>
+</head>
+<body>
+  <div id="app" class="wrap">
+    <div class="title">古典密码学与 DES 算法实现</div>
+    <div class="subtitle">矩阵换位 · Playfair · 弗吉尼亚 · 希尔(2×2) · DES(ECB/PKCS7) —— 演示加密与解密。</div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="tabbar">
+        <div class="tab" :class="{active: algo==='matrix'}" @click="algo='matrix'">矩阵换位</div>
+        <div class="tab" :class="{active: algo==='playfair'}" @click="algo='playfair'">Playfair</div>
+        <div class="tab" :class="{active: algo==='vigenere'}" @click="algo='vigenere'">弗吉尼亚</div>
+        <div class="tab" :class="{active: algo==='hill'}" @click="algo='hill'">希尔(2×2)</div>
+        <div class="tab" :class="{active: algo==='des'}" @click="algo='des'">DES</div>
+      </div>
+    </div>
+
+    <div class="grid cols" style="margin-top:16px">
+      <div class="card">
+        <div class="grid">
+          <div>
+            <label>明文（或密文）</label>
+            <textarea v-model="text" placeholder="在此输入…"></textarea>
+          </div>
+
+          <template v-if="algo==='matrix'">
+            <div>
+              <label>关键字（列重排依据，例如 SECRET，按字母表升序排序（相同字母按出现先后），得到每个“原列”的“排名 rank”。）</label>
+              <input type="text" v-model="params.matrix.key" placeholder="只含字母，决定列顺序"/>
+            </div>
+          </template>
+
+          <template v-if="algo==='playfair'">
+            <div class="grid">
+              <div>
+                <label>密钥短语（构造 5×5 表，J 合并到 I）</label>
+                <input type="text" v-model="params.playfair.key" placeholder="例如 SECURITY"/>
+              </div>
+              <div>
+                <label>填充字母</label>
+                <input type="text" v-model="params.playfair.filler" maxlength="1"/>
+              </div>
+            </div>
+          </template>
+
+          <template v-if="algo==='vigenere'">
+            <div>
+              <label>密钥（字母序列）</label>
+              <input type="text" v-model="params.vigenere.key" placeholder="例如 LEMON"/>
+            </div>
+          </template>
+
+          <template v-if="algo==='hill'">
+            <div>
+              <label>2×2 密钥（四个字母或逗号分隔数字，如 3,3,2,5）</label>
+              <input type="text" v-model="params.hill.key" placeholder="例如 GYBN（= [[6,24],[1,13]]）或 6,24,1,13"/>
+            </div>
+          </template>
+
+          <template v-if="algo==='des'">
+            <div class="grid">
+              <div>
+                <label>密钥（16 位十六进制或 8 字符）</label>
+                <input type="text" v-model="params.des.key" placeholder="例如 133457799BBCDFF1 或 8 字节 ASCII"/>
+              </div>
+              <div>
+                <label>输入/输出格式</label>
+                <select v-model="params.des.io">
+                  <option value="text">输入明文文本，输出十六进制密文</option>
+                  <option value="hex">输入十六进制，输出十六进制</option>
+                </select>
+              </div>
+            </div>
+            <div class="hint">DES 采用 ECB 模式与 PKCS#7 填充，仅用于教学演示。</div>
+          </template>
+
+          <div class="row">
+            <button class="btn" @click="onEncrypt">加密</button>
+            <button class="btn secondary" @click="onDecrypt">解密</button>
+          </div>
+
+          <div>
+            <label>结果</label>
+            <textarea readonly class="mono" :value="result"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700; margin-bottom:8px">快速示例</div>
+        <div class="kvs">
+          <div class="muted">矩阵换位</div>
+          <div><span class="pill">KEY=SECRET</span> 明文 ATTACKATDAWN → 密文 TTNAAPTMTSUOA（经典示例）</div>
+          <div class="muted">Playfair</div>
+          <div><span class="pill">KEY=PLAYFAIR EXAMPLE</span> 明文 HIDETHEGOLD → 密文 BMODZBXDNABEKUDMUIXMMOUVIF</div>
+          <div class="muted">弗吉尼亚</div>
+          <div><span class="pill">KEY=LEMON</span> 明文 ATTACKATDAWN → 密文 LXFOPVEFRNHR</div>
+          <div class="muted">希尔(2×2)</div>
+          <div><span class="pill">KEY=GYBN（6,24,1,13）</span> 明文 HELP → 密文 RRGV</div>
+          <div class="muted">DES</div>
+          <div><span class="pill">K=133457799BBCDFF1</span> P=0123456789ABCDEF → C=85E813540F0AB405</div>
+        </div>
+        <div class="footer">仅用于教学，不应用于实际安全场景。</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const ACode = 'A'.charCodeAt(0);
+  function onlyLetters(s){return (s||'').toUpperCase().replace(/[^A-Z]/g,'');}
+  function mod(n,m){return ((n % m)+m)%m}
+
+  // ------------------ 矩阵换位（列移位，列序由关键字字母序决定） ------------------
+  function columnOrder(key){
+    key = onlyLetters(key);
+    const arr = key.split('').map((ch, i) => ({ch, i}));
+    const sorted = [...arr].sort((a, b) => a.ch.localeCompare(b.ch) || a.i - b.i);
+    const order = Array(arr.length);
+    sorted.forEach((it, rank) => { order[it.i] = rank; });
+    return {order, key}
+  }
+  function matrixEncrypt(plaintext, key){
+    const text = onlyLetters(plaintext);
+    const {order, key:K} = columnOrder(key);
+    if(!K.length) return text;
+    const cols = K.length; const rows = Math.ceil(text.length / cols);
+    const grid = Array.from({length: rows}, (_, r) => text.slice(r*cols,(r+1)*cols).padEnd(cols, 'X').split(''));
+    const res = [];
+    for(let rank=0; rank<cols; rank++){
+      const colIndex = order.indexOf(rank);
+      for(let r=0;r<rows;r++) res.push(grid[r][colIndex]);
+    }
+    return res.join('');
+  }
+  function matrixDecrypt(cipher, key){
+    const text = onlyLetters(cipher);
+    const {order, key:K} = columnOrder(key);
+    if(!K.length) return text;
+    const cols = K.length; const rows = Math.ceil(text.length / cols);
+    const pad = cols*rows - text.length; // 有多少空位
+    const lastRowLen = cols - pad;
+    const colLens = Array.from({length: cols}, (_, i) => i >= lastRowLen ? rows-1 : rows);
+    const columns = Array(cols).fill(null);
+    let pos = 0;
+    for(let rank=0; rank<cols; rank++){
+      const colIndex = order.indexOf(rank);
+      const len = colLens[colIndex];
+      columns[colIndex] = text.slice(pos, pos+len).split('');
+      pos += len;
+    }
+    const res = [];
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const ch = columns[c][r];
+        if(ch) res.push(ch);
+      }
+    }
+    return res.join('');
+  }
+
+  // ------------------ Playfair ------------------
+  function buildPlayfairSquare(key){
+    const seen = new Set();
+    const table = [];
+    const push = ch=>{ if(ch==='J') ch='I'; if(!seen.has(ch) && /[A-Z]/.test(ch)){ seen.add(ch); table.push(ch);} };
+    onlyLetters(key).split('').forEach(push);
+    for(let i=0;i<26;i++){ const ch = String.fromCharCode(ACode+i); if(ch!=='J') push(ch); }
+    const pos = {}; table.forEach((ch, idx)=>{ pos[ch] = {r: Math.floor(idx/5), c: idx%5} });
+    return {table, pos};
+  }
+  function playfairPrepare(plaintext, filler='X'){
+    const s = onlyLetters(plaintext).replace(/J/g,'I');
+    const res = []; let i=0; const F=(onlyLetters(filler)||'X')[0]||'X';
+    while(i < s.length){
+      const a = s[i], b = s[i+1];
+      if(!b){ res.push(a+F); i+=2; }
+      else if(a===b){ res.push(a+F); i+=1; }
+      else { res.push(a+b); i+=2; }
+    }
+    return res;
+  }
+  function playfairEncrypt(plaintext, key, filler='X'){
+    const {table,pos} = buildPlayfairSquare(key);
+    const dig = playfairPrepare(plaintext, filler);
+    const out = [];
+    for(const pair of dig){
+      const a=pair[0], b=pair[1];
+      const pa = pos[a], pb = pos[b];
+      if(pa.r===pb.r){ // 同行，右移
+        out.push(table[pa.r*5 + (pa.c+1)%5]);
+        out.push(table[pb.r*5 + (pb.c+1)%5]);
+      }else if(pa.c===pb.c){ // 同列，下移
+        out.push(table[((pa.r+1)%5)*5 + pa.c]);
+        out.push(table[((pb.r+1)%5)*5 + pb.c]);
+      }else{ // 矩形
+        out.push(table[pa.r*5 + pb.c]);
+        out.push(table[pb.r*5 + pa.c]);
+      }
+    }
+    return out.join('');
+  }
+  function playfairDecrypt(cipher, key){
+    const {table,pos} = buildPlayfairSquare(key);
+    const s = onlyLetters(cipher);
+    const out = [];
+    for(let i=0;i<s.length;i+=2){
+      const a=s[i], b=s[i+1];
+      const pa = pos[a], pb = pos[b];
+      if(pa.r===pb.r){
+        out.push(table[pa.r*5 + mod(pa.c-1,5)]);
+        out.push(table[pb.r*5 + mod(pb.c-1,5)]);
+      }else if(pa.c===pb.c){
+        out.push(table[mod(pa.r-1,5)*5 + pa.c]);
+        out.push(table[mod(pb.r-1,5)*5 + pb.c]);
+      }else{
+        out.push(table[pa.r*5 + pb.c]);
+        out.push(table[pb.r*5 + pa.c]);
+      }
+    }
+    return out.join('');
+  }
+
+  // ------------------ 弗吉尼亚（Vigenère） ------------------
+  function vigKeyStream(key){ return onlyLetters(key).split('').map(ch=>ch.charCodeAt(0)-ACode); }
+  function vigenereEncrypt(plaintext, key){
+    const ks = vigKeyStream(key); if(!ks.length) return onlyLetters(plaintext);
+    const s = onlyLetters(plaintext), out=[]; let j=0;
+    for(const ch of s){ const p=ch.charCodeAt(0)-ACode; const c=(p+ks[j%ks.length])%26; out.push(String.fromCharCode(ACode+c)); j++; }
+    return out.join('');
+  }
+  function vigenereDecrypt(cipher, key){
+    const ks = vigKeyStream(key); if(!ks.length) return onlyLetters(cipher);
+    const s = onlyLetters(cipher), out=[]; let j=0;
+    for(const ch of s){ const c=ch.charCodeAt(0)-ACode; const p=mod(c-ks[j%ks.length],26); out.push(String.fromCharCode(ACode+p)); j++; }
+    return out.join('');
+  }
+
+  // ------------------ 希尔（2×2） ------------------
+  function parseHillKey(key){
+    const t = key.trim();
+    if(/^[0-9,\s]+$/.test(t)){
+      const nums = t.split(/[,\s]+/).filter(Boolean).map(x=>parseInt(x,10));
+      if(nums.length!==4) throw new Error('2×2 密钥需要 4 个数字');
+      return nums.map(x=>mod(x,26));
+    } else {
+      const s = onlyLetters(t);
+      if(s.length!==4) throw new Error('2×2 密钥需要 4 个字母');
+      return s.split('').map(ch=>ch.charCodeAt(0)-ACode);
+    }
+  }
+  function invMod(a, m){
+    a = mod(a,m); for(let x=1;x<m;x++) if(mod(a*x,m)===1) return x; return null;
+  }
+  function hillEncrypt(plaintext, key){
+    const [a,b,c,d] = parseHillKey(key);
+    const s = onlyLetters(plaintext); const out=[];
+    for(let i=0;i<s.length;i+=2){
+      const x = s.charCodeAt(i)-ACode;
+      const y = (i+1<s.length)? s.charCodeAt(i+1)-ACode : ('X'.charCodeAt(0)-ACode);
+      const r1 = mod(a*x + b*y, 26); const r2 = mod(c*x + d*y, 26);
+      out.push(String.fromCharCode(ACode+r1), String.fromCharCode(ACode+r2));
+    }
+    return out.join('');
+  }
+  function hillDecrypt(cipher, key){
+    const [a,b,c,d] = parseHillKey(key);
+    const det = mod(a*d - b*c, 26); const inv = invMod(det,26);
+    if(inv==null) throw new Error('密钥不可逆：det 与 26 不互素');
+    const ia = mod( d*inv,26), ib = mod(-b*inv,26), ic = mod(-c*inv,26), id = mod(a*inv,26);
+    const s = onlyLetters(cipher); const out=[];
+    for(let i=0;i<s.length;i+=2){
+      const x = s.charCodeAt(i)-ACode; const y = s.charCodeAt(i+1)-ACode;
+      const r1 = mod(ia*x + ib*y, 26); const r2 = mod(ic*x + id*y, 26);
+      out.push(String.fromCharCode(ACode+r1), String.fromCharCode(ACode+r2));
+    }
+    return out.join('');
+  }
+
+  // ------------------ DES（ECB/PKCS7） ------------------
+  const IP = [58,50,42,34,26,18,10,2, 60,52,44,36,28,20,12,4, 62,54,46,38,30,22,14,6, 64,56,48,40,32,24,16,8, 57,49,41,33,25,17,9,1, 59,51,43,35,27,19,11,3, 61,53,45,37,29,21,13,5, 63,55,47,39,31,23,15,7];
+  const IP_1 = [40,8,48,16,56,24,64,32, 39,7,47,15,55,23,63,31, 38,6,46,14,54,22,62,30, 37,5,45,13,53,21,61,29, 36,4,44,12,52,20,60,28, 35,3,43,11,51,19,59,27, 34,2,42,10,50,18,58,26, 33,1,41,9,49,17,57,25];
+  const E = [32,1,2,3,4,5, 4,5,6,7,8,9, 8,9,10,11,12,13, 12,13,14,15,16,17, 16,17,18,19,20,21, 20,21,22,23,24,25, 24,25,26,27,28,29, 28,29,30,31,32,1];
+  const P = [16,7,20,21,29,12,28,17, 1,15,23,26,5,18,31,10, 2,8,24,14,32,27,3,9, 19,13,30,6,22,11,4,25];
+  const PC1 = [57,49,41,33,25,17,9, 1,58,50,42,34,26,18, 10,2,59,51,43,35,27, 19,11,3,60,52,44,36, 63,55,47,39,31,23,15, 7,62,54,46,38,30,22, 14,6,61,53,45,37,29, 21,13,5,28,20,12,4];
+  const PC2 = [14,17,11,24,1,5, 3,28,15,6,21,10, 23,19,12,4,26,8, 16,7,27,20,13,2, 41,52,31,37,47,55, 30,40,51,45,33,48, 44,49,39,56,34,53, 46,42,50,36,29,32];
+  const SHIFTS = [1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1];
+  const SBOX = [
+    // S1
+    [[14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7],[0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8],[4,1,14,8,13,6,2,11,15,12,9,7,3,10,5,0],[15,12,8,2,4,9,1,7,5,11,3,14,10,0,6,13]],
+    // S2
+    [[15,1,8,14,6,11,3,4,9,7,2,13,12,0,5,10],[3,13,4,7,15,2,8,14,12,0,1,10,6,9,11,5],[0,14,7,11,10,4,13,1,5,8,12,6,9,3,2,15],[13,8,10,1,3,15,4,2,11,6,7,12,0,5,14,9]],
+    // S3
+    [[10,0,9,14,6,3,15,5,1,13,12,7,11,4,2,8],[13,7,0,9,3,4,6,10,2,8,5,14,12,11,15,1],[13,6,4,9,8,15,3,0,11,1,2,12,5,10,14,7],[1,10,13,0,6,9,8,7,4,15,14,3,11,5,2,12]],
+    // S4
+    [[7,13,14,3,0,6,9,10,1,2,8,5,11,12,4,15],[13,8,11,5,6,15,0,3,4,7,2,12,1,10,14,9],[10,6,9,0,12,11,7,13,15,1,3,14,5,2,8],[9,14,15,5,2,8,12,3,7,0,4,10,1,13,11,6]],
+    // S5
+    [[2,12,4,1,7,10,11,6,8,5,3,15,13,0,14,9],[14,11,2,12,4,7,13,1,5,0,15,10,3,9,8,6],[4,2,1,11,10,13,7,8,15,9,12,5,6,3,0,14],[11,8,12,7,1,14,2,13,6,15,0,9,10,4,5,3]],
+    // S6
+    [[12,1,10,15,9,2,6,8,0,13,3,4,14,7,5,11],[10,15,4,2,7,12,9,5,6,1,13,14,0,11,3,8],[9,14,15,5,2,8,12,3,7,0,4,10,1,13,11,6],[4,3,2,12,9,5,15,10,11,14,1,7,6,0,8,13]],
+    // S7
+    [[4,11,2,14,15,0,8,13,3,12,9,7,5,10,6,1],[13,0,11,7,4,9,1,10,14,3,5,12,2,15,8,6],[1,4,11,13,12,3,7,14,10,15,6,8,0,5,9,2],[6,11,13,8,1,4,10,7,9,5,0,15,14,2,3,12]],
+    // S8
+    [[13,2,8,4,6,15,11,1,10,9,3,14,5,0,12,7],[1,15,13,8,10,3,7,4,12,5,6,11,0,14,9,2],[7,11,4,1,9,12,14,2,0,6,10,13,15,3,5,8],[2,1,14,7,4,10,8,13,15,12,9,0,3,5,6,11]]
+  ];
+  function hexToBytes(hex){ const clean = hex.replace(/\s+/g,''); if(clean.length%2) throw new Error('十六进制长度需为偶数'); const out=new Uint8Array(clean.length/2); for(let i=0;i<out.length;i++){ out[i]=parseInt(clean.substr(i*2,2),16); } return out; }
+  function bytesToHex(arr){ return Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase(); }
+  function strToUtf8Bytes(s){ return new TextEncoder().encode(s); }
+  function utf8BytesToStr(bytes){ return new TextDecoder().decode(bytes); }
+  function pkcs7pad(bytes, block=8){ const pad = block - (bytes.length % block || block); const out=new Uint8Array(bytes.length+pad); out.set(bytes); out.fill(pad, bytes.length); return out; }
+  function pkcs7unpad(bytes){ const pad = bytes[bytes.length-1]; if(pad<=0 || pad>8) return bytes; return bytes.slice(0, bytes.length - pad); }
+  function bytesToBits(bytes){ const bits=[]; for(const b of bytes){ for(let i=7;i>=0;i--) bits.push((b>>i)&1); } return bits; }
+  function bitsToBytes(bits){ const out=new Uint8Array(bits.length/8); for(let i=0;i<out.length;i++){ let v=0; for(let j=0;j<8;j++){ v=(v<<1)|bits[i*8+j]; } out[i]=v; } return out; }
+  function permute(bits, table){ return table.map(pos=>bits[pos-1]); }
+  function leftShift(arr, n){ const k = n % arr.length; return arr.slice(k).concat(arr.slice(0,k)); }
+  function xorBits(a,b){ return a.map((v,i)=>v^b[i]); }
+  function sboxSub(bits48){ const out = []; for(let i=0;i<8;i++){ const chunk = bits48.slice(i*6,(i+1)*6); const row = (chunk[0]<<1) | chunk[5]; const col = (chunk[1]<<3)|(chunk[2]<<2)|(chunk[3]<<1)|chunk[4]; const val = SBOX[i][row][col]; out.push((val>>3)&1,(val>>2)&1,(val>>1)&1,val&1); } return out; }
+  function keySchedule(key64bits){ const key56 = permute(key64bits, PC1); let C = key56.slice(0,28); let D = key56.slice(28); const subkeys=[]; for(let i=0;i<16;i++){ C = leftShift(C, SHIFTS[i]); D = leftShift(D, SHIFTS[i]); subkeys.push( permute(C.concat(D), PC2) ); } return subkeys; }
+  function feistel(R, K){ const ER = permute(R, E); const x = xorBits(ER, K); const s = sboxSub(x); return permute(s, P); }
+  function desBlock(bits64, subkeys, decrypt=false){ let B = permute(bits64, IP); let L = B.slice(0,32), R=B.slice(32);
+    for(let i=0;i<16;i++){
+      const Ki = decrypt ? subkeys[15-i] : subkeys[i];
+      const f = feistel(R, Ki);
+      const nL = R;
+      const nR = xorBits(L, f);
+      L = nL; R = nR;
+    }
+    const pre = R.concat(L); // 交换
+    return permute(pre, IP_1);
+  }
+  function desEncryptBytes(dataBytes, keyBytes){ const keyBits = bytesToBits(keyBytes); const sub = keySchedule(keyBits); const padded = pkcs7pad(dataBytes,8); const out = new Uint8Array(padded.length);
+    for(let i=0;i<padded.length;i+=8){ const block = padded.slice(i,i+8); const bits = bytesToBits(block); const encBits = desBlock(bits, sub, false); out.set(bitsToBytes(encBits), i); }
+    return out; }
+  function desDecryptBytes(cipherBytes, keyBytes){ const keyBits = bytesToBits(keyBytes); const sub = keySchedule(keyBits); const out = new Uint8Array(cipherBytes.length);
+    for(let i=0;i<cipherBytes.length;i+=8){ const block = cipherBytes.slice(i,i+8); const bits = bytesToBits(block); const decBits = desBlock(bits, sub, true); out.set(bitsToBytes(decBits), i); }
+    return pkcs7unpad(out); }
+  function parseDesKey(input){ const s=input.trim(); if(/^([0-9a-fA-F]{16})$/.test(s)) return hexToBytes(s); const bytes = strToUtf8Bytes(s); if(bytes.length!==8) throw new Error('密钥需为 16 位十六进制或 8 字节文本'); return bytes; }
+
+  const app = Vue.createApp({
+    data(){ return {
+      algo: 'matrix',
+      text: '',
+      result: '',
+      params: {
+        matrix: { key: 'SECRET' },
+        playfair: { key: 'PLAYFAIR EXAMPLE', filler: 'X' },
+        vigenere: { key: 'LEMON' },
+        hill: { key: 'GYBN' },
+        des: { key: '133457799BBCDFF1', io: 'text' }
+      }
+    }},
+    methods:{
+      onEncrypt(){
+        try{
+          if(this.algo==='matrix') this.result = matrixEncrypt(this.text, this.params.matrix.key);
+          else if(this.algo==='playfair') this.result = playfairEncrypt(this.text, this.params.playfair.key, this.params.playfair.filler);
+          else if(this.algo==='vigenere') this.result = vigenereEncrypt(this.text, this.params.vigenere.key);
+          else if(this.algo==='hill') this.result = hillEncrypt(this.text, this.params.hill.key);
+          else if(this.algo==='des'){
+            const key = parseDesKey(this.params.des.key);
+            if(this.params.des.io==='text'){
+              const pt = strToUtf8Bytes(this.text);
+              const ct = desEncryptBytes(pt, key);
+              this.result = bytesToHex(ct);
+            } else {
+              const pt = hexToBytes(this.text.replace(/\s+/g,''));
+              const ct = desEncryptBytes(pt, key);
+              this.result = bytesToHex(ct);
+            }
+          }
+        }catch(e){ this.result = '错误：'+e.message; }
+      },
+      onDecrypt(){
+        try{
+          if(this.algo==='matrix') this.result = matrixDecrypt(this.text, this.params.matrix.key);
+          else if(this.algo==='playfair') this.result = playfairDecrypt(this.text, this.params.playfair.key);
+          else if(this.algo==='vigenere') this.result = vigenereDecrypt(this.text, this.params.vigenere.key);
+          else if(this.algo==='hill') this.result = hillDecrypt(this.text, this.params.hill.key);
+          else if(this.algo==='des'){
+            const key = parseDesKey(this.params.des.key);
+            if(this.params.des.io==='text'){
+              const ct = hexToBytes(this.text.replace(/\s+/g,''));
+              const pt = desDecryptBytes(ct, key);
+              this.result = utf8BytesToStr(pt);
+            } else {
+              const ct = hexToBytes(this.text.replace(/\s+/g,''));
+              const pt = desDecryptBytes(ct, key);
+              this.result = bytesToHex(pt);
+            }
+          }
+        }catch(e){ this.result = '错误：'+e.message; }
+      }
+    }
+  });
+  app.mount('#app');
+  </script>
+</body>
+</html>
