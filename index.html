@@ -5,35 +5,81 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>古典密码学与 DES 实验 | Vue 单页</title>
   <script src="https://unpkg.com/vue@3"></script>
-  <style>
-    :root { --bg:#0b1220; --card:#111a2b; --muted:#a8b3c7; --text:#e6edf6; --accent:#4f8cff; }
-    *{box-sizing:border-box} body{margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    .wrap{max-width:1100px; margin:40px auto; padding:0 16px}
-    .title{font-size:26px; font-weight:700; letter-spacing:.3px}
-    .subtitle{opacity:.85; margin-top:6px}
-    .card{background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:18px; box-shadow:0 6px 24px rgba(0,0,0,.25)}
-    .grid{display:grid; gap:14px}
-    .grid.cols{grid-template-columns: 1.2fr .8fr}
-    .row{display:flex; gap:10px; flex-wrap:wrap}
-    label{font-weight:600; font-size:13px; color:var(--muted)}
-    input[type="text"], input[type="number"], textarea, select {
-      width:100%; background:#0d1526; color:var(--text); border:1px solid rgba(255,255,255,.08);
-      border-radius:12px; padding:10px 12px; outline:none
-    }
-    textarea{min-height:120px; resize:vertical}
-    .btn{appearance:none; border:none; background:var(--accent); color:white; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700}
-    .btn.secondary{background:#18243c}
-    .btn:disabled{opacity:.6; cursor:not-allowed}
-    .tabbar{display:flex; gap:8px; flex-wrap:wrap}
-    .tab{padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12); cursor:pointer; user-select:none}
-    .tab.active{background:var(--accent); border-color:transparent}
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-    .muted{color:var(--muted)}
-    .hint{font-size:12px; color:#a8b3c7; opacity:.9}
-    .footer{margin-top:8px; font-size:12px; color:#9ab}
-    .kvs{display:grid; grid-template-columns: 140px 1fr; gap:8px; align-items:center}
-    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:#1a2744; color:#cfe0ff; font-size:12px}
-  </style>
+<style>
+  :root { --bg:#0b1220; --card:#111a2b; --muted:#a8b3c7; --text:#e6edf6; --accent:#4f8cff; --radius:16px; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+    line-height:1.5;
+    /* 自适应基础字号：14–16px 随视口变化 */
+    font-size:clamp(14px,1.2vw + 10px,16px);
+  }
+
+  /* 容器边距在不同断点渐变 */
+  .wrap{max-width:1100px; margin:24px auto; padding:0 16px}
+  @media (min-width:768px){ .wrap{margin:32px auto; padding:0 20px} }
+  @media (min-width:1200px){ .wrap{margin:40px auto; padding:0 24px} }
+
+  .title{font-weight:700; letter-spacing:.3px; margin:4px 0; font-size:clamp(20px,2.6vw + 10px,28px)}
+  .subtitle{opacity:.85; margin-top:6px; font-size:clamp(13px,1.2vw + 8px,16px)}
+
+  .card{
+    background:var(--card); border:1px solid rgba(255,255,255,.06);
+    border-radius:var(--radius); padding:16px; box-shadow:0 6px 24px rgba(0,0,0,.25);
+  }
+
+  /* 栅格：手机单列，≥900px 才双列 */
+  .grid{display:grid; gap:14px}
+  .grid.cols{grid-template-columns:1fr}
+  @media (min-width:900px){ .grid.cols{grid-template-columns:1.2fr .8fr} }
+
+  /* 行在小屏改为一列满宽按钮 */
+  .row{display:flex; gap:10px; flex-wrap:wrap}
+  @media (max-width:767px){ .row{flex-direction:column} .row .btn{width:100%} }
+
+  label{font-weight:600; font-size:13px; color:var(--muted)}
+
+  /* 表单控件：16px 防 iOS 输入放大 */
+  input[type="text"], input[type="number"], textarea, select{
+    width:100%; background:#0d1526; color:var(--text);
+    border:1px solid rgba(255,255,255,.08); border-radius:12px;
+    padding:10px 12px; outline:none; font-size:16px;
+  }
+  textarea{min-height:clamp(120px,22vh,220px); resize:vertical}
+
+  .btn{
+    appearance:none; border:none; background:var(--accent); color:#fff;
+    padding:12px 14px; border-radius:12px; cursor:pointer; font-weight:700;
+    font-size:16px; min-height:44px; /* 触控友好 */
+  }
+  .btn.secondary{background:#18243c}
+  .btn:disabled{opacity:.6; cursor:not-allowed}
+
+  /* 标签栏在小屏可横向滑动 */
+  .tabbar{
+    display:flex; gap:8px; flex-wrap:nowrap;
+    overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px;
+  }
+  .tab{
+    padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12);
+    cursor:pointer; user-select:none; white-space:nowrap; flex:0 0 auto;
+  }
+  .tab.active{background:var(--accent); border-color:transparent}
+
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .muted{color:var(--muted)}
+  .hint{font-size:12px; color:#a8b3c7; opacity:.9}
+  .footer{margin-top:8px; font-size:12px; color:#9ab}
+
+  /* 示例区：手机单列，≥640px 两列（标签列宽 140px） */
+  .kvs{display:grid; gap:8px; align-items:center; grid-template-columns:1fr}
+  @media (min-width:640px){ .kvs{grid-template-columns:140px 1fr} }
+
+  .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:#1a2744; color:#cfe0ff; font-size:12px}
+</style>
+
 </head>
 <body>
   <div id="app" class="wrap">
